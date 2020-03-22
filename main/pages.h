@@ -24,6 +24,8 @@ setTimeout(\"location.href = '/'\",10000);\
 <td>Password:</td>\
 <td><input type='text' name='password' value='%s'/></td>\
 </tr>\
+<td><input type='number' name='stanum' value='0' min='0' max='15'/>STA number, any number >0 and <15 is used as a failover in case the number 0 disconnects. </td>\
+<td>Remember to fill in from number 0, and DO NOT LEAVE GAPS between position numbers</td>\
 <tr>\
 <td></td>\
 <td><input type='submit' value='Connect'/></td>\
@@ -42,6 +44,14 @@ setTimeout(\"location.href = '/'\",10000);\
 <tr>\
 <td>Password:</td>\
 <td><input type='text' name='ap_password' value='%s'/></td>\
+</tr>\
+</tr>\
+<tr>\
+<td>IP address:</td>\
+<td><input type='number' name='ip_a' value='192'/></td>\
+.<td><input type='number' name='ip_b' value='168'/></td>\
+.<td><input type='number' name='ip_c' value='5'/></td>\
+.<td><input type='number' name='ip_d' value='1'/></td>\
 </tr>\
 <tr>\
 <td></td>\

@@ -21,6 +21,9 @@
 #include "nvs_flash.h"
 
 #include "freertos/event_groups.h"
+
+#include "freertos/FreeRTOS.h"
+
 #include "esp_wifi.h"
 
 #include "lwip/opt.h"
@@ -45,6 +48,27 @@ static EventGroupHandle_t wifi_event_group;
 const int WIFI_CONNECTED_BIT = BIT0;
 
 #define MY_DNS_IP_ADDR 0x08080808 // 8.8.8.8
+
+// please see to it that all of these defines make sense.
+#define MY_SOFTAPNG_IP_ADDR 0xC0A80501 // 0xC0A80401 for 192.168.4.1  netmask is /24 by default
+// #define MY_SOFTAPNG_IPA 192
+// #define MY_SOFTAPNG_IPB 168
+// #define MY_SOFTAPNG_IPC 5 // 4 is the default
+// #define MY_SOFTAPNG_IPD 1
+
+int SoapIPF = 0xC0A80501; // full SoftAP IP 
+int SoapIPA = 192; // SoftAP IP, each byte
+int SoapIPB = 168;
+int SoapIPC = 5;
+int SoapIPD = 1;
+char* ssidAlt = NULL;
+char* passwdAlt = NULL;
+
+
+// STA SSIDs rotation pointer
+int staSSIDrotCounter = 0; // cycle through many SSIDs
+char* STAList[] = {"sta00", "sta01", "sta02", "sta03", "sta04", "sta05", "sta06", "sta07", "sta08", "sta09", "sta10", "sta11", "sta12", "sta13", "sta14", "sta15"};
+char* passList[] = {"pass00", "pass01", "pass02", "pass03", "pass04", "pass05", "pass06", "pass07", "pass08", "pass09", "pass10", "pass11", "pass12", "pass13", "pass14", "pass15"};
 
 uint16_t connect_count = 0;
 bool ap_connect = false;
@@ -146,6 +170,76 @@ static void initialize_console(void)
 #endif
 }
 
+char* param_set_default(const char* def_val) {
+    char * retval = malloc(strlen(def_val)+1);
+    strcpy(retval, def_val);
+    return retval;
+}
+
+const int CONNECTED_BIT = BIT0;
+#define JOIN_TIMEOUT_MS (2000)
+
+
+void cycle_STA_select() {
+
+
+	get_config_param_str(STAList[staSSIDrotCounter], &ssid);
+    	if (ssid == NULL) {
+        	ssid = param_set_default("");
+    	}
+    	get_config_param_str(passList[staSSIDrotCounter], &passwd);
+    	if (passwd == NULL) {
+        	passwd = param_set_default("");
+	}
+	get_config_param_str(STAList[staSSIDrotCounter], &ssidAlt);
+    	if (ssidAlt == NULL) {
+        	ssid = param_set_default("");
+    	}
+    	get_config_param_str(passList[staSSIDrotCounter], &passwdAlt);
+    	if (passwdAlt == NULL) {
+        	passwd = param_set_default("");
+	}
+
+
+	staSSIDrotCounter++;
+	if (staSSIDrotCounter > 15) {
+		staSSIDrotCounter = 0;
+	}
+
+}
+
+
+void cycle_STA_init() {
+
+
+	// wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT(); // commented, might be dangerous. 
+    	// ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+    	/* ESP WIFI CONFIG */
+	wifi_config_t wifi_config = { 0 };
+
+	if (strlen(ssid) > 0) {
+        	strlcpy((char*)wifi_config.sta.ssid, ssidAlt, sizeof(wifi_config.sta.ssid));
+        	strlcpy((char*)wifi_config.sta.password, passwdAlt, sizeof(wifi_config.sta.password));
+        
+        	ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config) );
+        
+	}
+
+	xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT,
+        pdFALSE, pdTRUE, JOIN_TIMEOUT_MS / portTICK_PERIOD_MS);
+    	ESP_ERROR_CHECK(esp_wifi_start());
+
+	if (strlen(ssidAlt) > 0) {
+		ESP_LOGI(TAG, "wifi: STA set finished.");
+        	ESP_LOGI(TAG, "connect to ap SSID: %s ", ssidAlt);
+
+	}
+
+
+}
+
+
 static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
 {
   switch(event->event_id) {
@@ -156,10 +250,27 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
         ap_connect = true;
         ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->event_info.got_ip.ip_info.ip));
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
+
+	wifi_ap_record_t wifidata;
+	if (esp_wifi_sta_get_ap_info(&wifidata)==0){
+		printf("rssi:%d\r\n", wifidata.rssi);
+	}
+
         break;
     case SYSTEM_EVENT_STA_DISCONNECTED:
         ESP_LOGI(TAG,"disconnected - retry to connect to the AP");
-        ap_connect = false;
+        
+	ESP_LOGI(TAG,"cycling through a different remote AP if configured");
+
+
+	ap_connect = false;
+
+	// at this point the idea is to re-init only the STA part of the wifi system
+
+	cycle_STA_select();
+	cycle_STA_init();
+	
+
         esp_wifi_connect();
         xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_BIT);
         break;
@@ -177,18 +288,44 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
   return ESP_OK;
 }
 
-const int CONNECTED_BIT = BIT0;
-#define JOIN_TIMEOUT_MS (2000)
 
 void wifi_init(const char* ssid, const char* passwd, const char* ap_ssid, const char* ap_passwd)
 {
     ip_addr_t dnsserver;
+
+    // ip_addr_t softAPNGIP; // unused, to be removed
+
     //tcpip_adapter_dns_info_t dnsinfo;
 
     wifi_event_group = xEventGroupCreate();
 
     tcpip_adapter_init();
     ESP_ERROR_CHECK(esp_event_loop_init(wifi_event_handler, NULL) );
+
+    	// This mod allows us to assign an IP of our choice to the SoftAP interface.
+	
+	// stop DHCP server
+        ESP_ERROR_CHECK(tcpip_adapter_dhcps_stop(TCPIP_ADAPTER_IF_AP));
+	printf("IniMOD: DHCP server stopped \n");
+	ESP_ERROR_CHECK(tcpip_adapter_dhcpc_stop(TCPIP_ADAPTER_IF_STA));
+        printf("IniMOD: DHCP client stopped \n");
+
+	// assign a static IP to the network interface
+	tcpip_adapter_ip_info_t info;
+        memset(&info, 0, sizeof(info));
+        // IP4_ADDR(&info.ip, 192, 168, 4, 1);
+	IP4_ADDR(&info.ip, SoapIPA, SoapIPB, SoapIPC, SoapIPD);
+        // IP4_ADDR(&info.gw, 192, 168, 4, 1);//ESP acts as router, so gw addr will be its own addr
+	IP4_ADDR(&info.gw, SoapIPA, SoapIPB, SoapIPC, SoapIPD);//ESP acts as router, so gw addr will be its own addr
+       IP4_ADDR(&info.netmask, 255, 255, 255, 0);
+        ESP_ERROR_CHECK(tcpip_adapter_set_ip_info(TCPIP_ADAPTER_IF_AP, &info));
+        // start the DHCP server   
+        ESP_ERROR_CHECK(tcpip_adapter_dhcps_start(TCPIP_ADAPTER_IF_AP));
+        printf("IniMOD: DHCP server started \n");
+
+	ESP_ERROR_CHECK(tcpip_adapter_dhcpc_start(TCPIP_ADAPTER_IF_STA));
+        printf("IniMOD: DHCP client started \n");
+
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
@@ -251,12 +388,13 @@ char* ssid = NULL;
 char* passwd = NULL;
 char* ap_ssid = NULL;
 char* ap_passwd = NULL;
+int ipanint = 0; // these should store the parts of the ip address used for the SoftAP interface
+int ipbnint = 0;
+int ipcnint = 0;
+int ipdnint = 0;
 
-char* param_set_default(const char* def_val) {
-    char * retval = malloc(strlen(def_val)+1);
-    strcpy(retval, def_val);
-    return retval;
-}
+
+
 
 void app_main(void)
 {
@@ -268,6 +406,28 @@ void app_main(void)
 #else
     ESP_LOGI(TAG, "Command history disabled");
 #endif
+
+	esp_err_t errn = get_config_param_byte("ipa", & ipanint);
+	if (errn == ESP_OK) {
+		if (ipanint != 0) {
+			esp_err_t errn = get_config_param_byte("ipb", & ipbnint);
+			if (errn == ESP_OK) {
+				esp_err_t errn = get_config_param_byte("ipc", & ipcnint);
+				if (errn == ESP_OK) {
+					esp_err_t errn = get_config_param_byte("ipd", & ipdnint);
+					if (errn == ESP_OK) {
+						SoapIPA = ipanint;
+						SoapIPB = ipbnint;
+						SoapIPC = ipcnint;
+						SoapIPD = ipdnint;
+						SoapIPF = (SoapIPA << 24) + (SoapIPB << 16) + (SoapIPC << 8) + SoapIPD; // calculating the full Soft AP IP from the parts
+						printf("DEBUG esp32_nat_router: recovered SoftAP IP data from flash: %d %d %d %d", SoapIPA, SoapIPB, SoapIPC, SoapIPD);
+					}
+				}
+			}
+		}
+	}
+
 
     get_config_param_str("ssid", &ssid);
     if (ssid == NULL) {
@@ -285,11 +445,15 @@ void app_main(void)
     if (ap_passwd == NULL) {
         ap_passwd = param_set_default("");
     }
+
+
+ 
+
     // Setup WIFI
     wifi_init(ssid, passwd, ap_ssid, ap_passwd);
 
 #if IP_NAPT
-    u32_t napt_netif_ip = 0xC0A80401; // Set to ip address of softAP netif (Default is 192.168.4.1)
+    u32_t napt_netif_ip = SoapIPF; // Set to ip address of softAP netif (Default is 192.168.4.1)
     ip_napt_enable(htonl(napt_netif_ip), 1);
     ESP_LOGI(TAG, "NAT is enabled");
 #endif
@@ -330,6 +494,11 @@ void app_main(void)
                "Configure using 'set_sta' and 'set_ap' and restart.\n");       
     }
 
+
+	printf("Use the 'list_alternate' command to display the alternate STA settings (the remote AP's to connect to) stored in the flash.\n");	
+	printf("Warning: 'list_alternate' fails horribly if no STA settings have been configured yet.\n");
+
+
     /* Figure out if the terminal supports escape sequences */
     int probe_status = linenoiseProbe();
     if (probe_status) { /* zero indicates success */
@@ -355,6 +524,19 @@ void app_main(void)
         if (line == NULL) { /* Ignore empty lines */
             continue;
         }
+
+	if ((strcmp(line,"list_alternate") == 0) || (strcmp(line,"list_alternate\n") == 0)) {
+		// listing the remote APs saved to flash
+		printf("For your information, I'm listing the existing APs saved to flash. Be wise.\n");
+
+		for ( int STApointer = 0; STApointer <= 15; STApointer++ ) {
+			get_config_param_str(STAList[STApointer], &ssidAlt);
+			get_config_param_str(passList[STApointer], &passwdAlt);
+			printf("SSID: %s with passwd: %s at position %d\n", ssidAlt, passwdAlt, STApointer);
+		}
+	}
+
+
         /* Add the command to the history */
         linenoiseHistoryAdd(line);
 #if CONFIG_STORE_HISTORY

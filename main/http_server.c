@@ -23,6 +23,9 @@
 #include "pages.h"
 #include "esp32_nat_router.h"
 
+// #include <stdlib.h> // need the atoi function
+
+
 static const char *TAG = "HTTPServer";
 
 esp_timer_handle_t restart_timer;
@@ -70,12 +73,32 @@ static esp_err_t index_get_handler(httpd_req_t *req)
             }
             char param1[64];
             char param2[64];
+	    char param3[64];
+	    char param4[64];
+	    char param5[64];
+	    char param6[64];
+	    int ipaint = 0;
+	    int ipbint = 0;
+	    int ipcint = 0;
+	    int ipdint = 0;
+	    int ipabcd[4];
+
+	    ipabcd[0] = 0;
+	    ipabcd[1] = 0;
+	    ipabcd[2] = 0;
+	    ipabcd[3] = 0;
+	    
+	    int STApos = 0;
+
+
             /* Get value of expected key from query string */
             if (httpd_query_key_value(buf, "ssid", param1, sizeof(param1)) == ESP_OK) {
                 ESP_LOGI(TAG, "Found URL query parameter => ssid=%s", param1);
                 preprocess_string(param1);
                 if (httpd_query_key_value(buf, "password", param2, sizeof(param2)) == ESP_OK) {
                     ESP_LOGI(TAG, "Found URL query parameter => password=%s", param2);
+		
+
                     preprocess_string(param2);
                     int argc = 3;
                     char *argv[3];
@@ -83,6 +106,14 @@ static esp_err_t index_get_handler(httpd_req_t *req)
                     argv[1] = param1;
                     argv[2] = param2;
                     set_sta(argc, argv);
+
+
+		    if (httpd_query_key_value(buf, "stanum", param3, sizeof(param3)) == ESP_OK) {
+		    	ESP_LOGI(TAG, "Found URL query parameter => stanum=%s", param3);
+			STApos = atoi(param3);
+			set_staAlt(argc, argv, STApos);
+		    }
+		    
                     esp_timer_start_once(restart_timer, 500000);
                 }
             }
@@ -91,13 +122,39 @@ static esp_err_t index_get_handler(httpd_req_t *req)
                 preprocess_string(param1);
                 if (httpd_query_key_value(buf, "ap_password", param2, sizeof(param2)) == ESP_OK) {
                     ESP_LOGI(TAG, "Found URL query parameter => ap_password=%s", param2);
+		    // SoftAP IP subsection
+		    if (httpd_query_key_value(buf, "ip_a", param3, sizeof(param3)) == ESP_OK) {
+		    	ESP_LOGI(TAG, "Found URL query parameter => ip_a=%s", param3);
+			if (httpd_query_key_value(buf, "ip_b", param4, sizeof(param4)) == ESP_OK) {	
+		    		ESP_LOGI(TAG, "Found URL query parameter => ip_b=%s", param4);
+				if (httpd_query_key_value(buf, "ip_c", param5, sizeof(param5)) == ESP_OK) {
+		    			ESP_LOGI(TAG, "Found URL query parameter => ip_c=%s", param5);
+					if (httpd_query_key_value(buf, "ip_d", param6, sizeof(param6)) == ESP_OK) {
+		    				ESP_LOGI(TAG, "Found URL query parameter => ip_d=%s", param6);
+						// saving the IP address
+						ipabcd[0] = atoi(param3);
+						ipabcd[1] = atoi(param4);
+						ipabcd[2] = atoi(param5);
+						ipabcd[3] = atoi(param6);
+						printf("http_server received ip data: %d %d %d %d",ipabcd[0],ipabcd[1],ipabcd[2],ipabcd[3]);
+                    				save_ip_addr(ipabcd);
+
+					}
+				}
+			}
+		    }
+		    
+		    
+
                     preprocess_string(param2);
                     int argc = 3;
                     char *argv[3];
                     argv[0] = "set_ap";
                     argv[1] = param1;
                     argv[2] = param2;
-                    set_ap(argc, argv);
+		    
+                    // saving the AP config
+		    set_ap(argc, argv);
                     esp_timer_start_once(restart_timer, 500000);
                 }
             }

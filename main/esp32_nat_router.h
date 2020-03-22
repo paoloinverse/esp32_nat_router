@@ -20,6 +20,8 @@ extern char* ap_passwd;
 void preprocess_string(char* str);
 int set_sta(int argc, char **argv);
 int set_ap(int argc, char **argv);
+int save_ip_addr(int *ipabcdn);
+int set_staAlt(int argc, char **argv, int stanum);
 
 httpd_handle_t start_webserver(void);
 

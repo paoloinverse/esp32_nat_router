@@ -28,11 +28,19 @@
 #define WITH_TASKS_INFO 1
 #endif
 
+const char** STAListInternal[] = {"sta00", "sta01", "sta02", "sta03", "sta04", "sta05", "sta06", "sta07", "sta08", "sta09", "sta10", "sta11", "sta12", "sta13", "sta14", "sta15"};
+const char** passListInternal[] = {"pass00", "pass01", "pass02", "pass03", "pass04", "pass05", "pass06", "pass07", "pass08", "pass09", "pass10", "pass11", "pass12", "pass13", "pass14", "pass15"};
+
+
+
+
 static const char *TAG = "cmd_router";
 
 static void register_set_sta(void);
 static void register_set_ap(void);
 static void register_show(void);
+
+
 
 void preprocess_string(char* str)
 {
@@ -104,6 +112,26 @@ esp_err_t get_config_param_int(char* name, int* param)
     }
     return ESP_OK;
 }
+// get one single number from storage
+esp_err_t get_config_param_byte(char* name, int* param)
+{
+    nvs_handle_t nvs;
+
+    esp_err_t err = nvs_open(PARAM_NAMESPACE, NVS_READONLY, &nvs);
+    if (err == ESP_OK) {
+        if ( (err = nvs_get_i32(nvs, name, param)) == ESP_OK) {
+            ESP_LOGI(TAG, "%s %d", name, *param);
+        } else {
+            return err;
+        }
+        nvs_close(nvs);
+    } else {
+        return err;
+    }
+    return ESP_OK;
+}
+
+
 
 void register_router(void)
 {
@@ -269,3 +297,78 @@ static void register_show(void)
     };
     ESP_ERROR_CHECK( esp_console_cmd_register(&cmd) );
 }
+
+// save the IP address data for the SoftAP
+int save_ip_addr(int *ipabcdn) {
+
+	esp_err_t err;
+	nvs_handle_t nvs;
+
+	err = nvs_open(PARAM_NAMESPACE, NVS_READWRITE, &nvs);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+
+    printf("DEBUG: cmd_router received request to store IP address data: %d %d %d %d ", ipabcdn[0], ipabcdn[1], ipabcdn[2], ipabcdn[3]);
+
+    err = nvs_set_i32(nvs, "ipa", ipabcdn[0]);
+    if (err == ESP_OK) {
+        err = nvs_set_i32(nvs, "ipb", ipabcdn[1]);
+        if (err == ESP_OK) {
+		err = nvs_set_i32(nvs, "ipc", ipabcdn[2]);
+		if (err == ESP_OK) {
+			err = nvs_set_i32(nvs, "ipd", ipabcdn[3]);
+			if (err == ESP_OK) {
+            			err = nvs_commit(nvs);
+            			if (err == ESP_OK) {
+                			ESP_LOGI(TAG, "IP settings %d %d %d %d stored.", ipabcdn[0], ipabcdn[1], ipabcdn[2], ipabcdn[3]);
+            			}
+        		}
+		}
+	}	
+    }
+    nvs_close(nvs);
+    return err;
+
+
+}
+
+
+/* 'set_staAlt' command */
+int set_staAlt(int argc, char **argv, int stanum)
+{
+    esp_err_t err;
+    nvs_handle_t nvs;
+	
+
+    int nerrors = arg_parse(argc, argv, (void **) &set_sta_arg);
+    if (nerrors != 0) {
+        arg_print_errors(stderr, set_sta_arg.end, argv[0]);
+        return 1;
+    }
+
+    preprocess_string((char*)set_sta_arg.ssid->sval[0]);
+    preprocess_string((char*)set_sta_arg.password->sval[0]);
+
+    err = nvs_open(PARAM_NAMESPACE, NVS_READWRITE, &nvs);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = nvs_set_str(nvs, STAListInternal[stanum], set_sta_arg.ssid->sval[0]);
+    if (err == ESP_OK) {
+        err = nvs_set_str(nvs, passListInternal[stanum], set_sta_arg.password->sval[0]);
+        if (err == ESP_OK) {
+            err = nvs_commit(nvs);
+            if (err == ESP_OK) {
+                ESP_LOGI(TAG, "STA Alternate settings %s/%s stored at position %d.", set_sta_arg.ssid->sval[0], set_sta_arg.password->sval[0], stanum);
+            }
+        }
+    }
+    nvs_close(nvs);
+    return err;
+}
+
+
+

@@ -16,6 +16,7 @@ extern uint16_t connect_count;
 extern bool ap_connect;
 
 esp_err_t get_config_param_int(char* name, int* param);
+esp_err_t get_config_param_byte(char* name, int* param);
 esp_err_t get_config_param_str(char* name, char** param);
 
 #ifdef __cplusplus
