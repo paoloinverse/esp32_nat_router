@@ -27,7 +27,7 @@ The code is based on the [Console Component](https://docs.espressif.com/projects
 After first boot the ESP32 NAT Router will offer a WiFi network with an open AP and the ssid "ESP32_NAT_Router". Configuration can either be done via a simple web interface or via the serial console. 
 
 ## Web Config Interface
-The web interface allows for the configuration of all parameters. Connect you PC or smartphone to the WiFi SSID "ESP32_NAT_Router" and point your browser to "http://192.168.4.1". This page should appear:
+The web interface allows for the configuration of all parameters. Connect you PC or smartphone to the WiFi SSID "ESP32_NAT_Router" and point your browser to "http://192.168.5.1". This page should appear:
 
 <img src="https://raw.githubusercontent.com/paoloinverse/esp32_nat_router/master/ESP32_NAT_UI.JPG">
 
