@@ -1,5 +1,5 @@
 Hello, 
-this is a fork of Martin-Ger's awesome ESP32 NAT Router code, see the source at https://github.com/martin-ger/esp32_nat_router
+this is a fork of Martin-Ger's awesome ESP32 NAT Router code, see the original code at https://github.com/martin-ger/esp32_nat_router
 
 As it happens, I needed to build a hierarchical network of cascaded ESP32 routers with failover and self-healing capabilities, of course each ESP32 needs to have its own IP addressing space so I just modified Martin's project
 and added exactly this: 
