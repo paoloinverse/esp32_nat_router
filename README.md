@@ -1,7 +1,7 @@
 Hello, 
 this is a fork of Martin-Ger's awesome ESP32 NAT Router code, see the original code at https://github.com/martin-ger/esp32_nat_router
 
-As it happens, I needed to build a hierarchical network of cascaded ESP32 routers with failover and self-healing capabilities, of course each ESP32 needs to have its own IP addressing space so I just modified Martin's project
+As it happens, I needed to build a hierarchical network of cascaded ESP32 nat-routers with failover and self-healing capabilities, of course each ESP32 needed to have its own IP addressing space so I just modified Martin's project
 and added exactly this: 
 
 1) Ability to set multiple STA configurations, numbered from 0 to 15, if the ESP32 disconnects or fails to connect to the default remote AP number 0, then the next AP saved to flash is used. The STA configurations allow up to 16 different AP that can be cycled through in a round robin fashion. This process lets one build layered, cascaded networks of ESP32 NAT/Routers with self-healing capabilities that basically come for free during the failover process. Make sure that the devices cannot form routing loops, that would be VERY bad. You should rather try to build a layered, tree-like topology. There can be multiple AP at the vertices, that are connected to the Internet. If one fails, the other takes over!
@@ -10,7 +10,11 @@ and added exactly this:
 
 3) I added a serial command, list_alternate , that allows you to view the list of configured failover STA's. That might save the day. 
 
-Make sure to use Martin's modified LWIP library with NAT together with the ESP-IDF framework at least version 4+, you may find the instructions down here:
+4) added configurable "pseudo-heartbeats". Whenever a configuration change happens, a wifi event happens or any command is received from serial, a udp message is sent to two redundant remote servers. The "heartbeat" message transports a minimalist layer 5 protocol over udp and basically signals the device (its hostname) is alive and working.  Work-in-progress: add a timer function to periodically send out these packets. The IP addresses of the remote servers, and the UDP port are configurable, the default configuration is hardcoded, but the changes are saved in the NVS. You may want to compile your own firmware with your own defaults.
+
+In order to compile this code:
+make sure to use Martin's modified LWIP library with NAT together with the ESP-IDF framework, at least version 4, you may find the instructions at the end of this README. Notice the code is currently (2020-03-31) using tcpip_adapter_init(); which is now deprecated from ESP-IDF 4.1 and later. I'm in the process of migrating to esp_netif_init(); a feat that takes extensive modifications to the core code. If you see warnings but use ESP-IDF 4.0 or 4.1 (recommended), don't worry. 
+This isn' the only deprecated function, so migrating is in order AND will happen.
 
 
 # ESP32 NAT Router
