@@ -40,6 +40,30 @@
 
 #include "esp32_nat_router.h"
 
+// udp layer 5 signaling, additional includes (LFCP) START
+#include <sys/param.h>
+//#include "freertos/task.h"
+#include "esp_event.h"
+#include "esp_netif.h"
+#include "lwip/sockets.h"
+#include <lwip/netdb.h>
+
+static const char *TAGLFCP = "LFCP:";
+static const char *payloadLFCPinit = ",HEARTBEAT,0,0,0,0,0,0";  // to be completed with the current hostname...
+
+char rx_bufferLFCP[128];
+char* serverA_ipLFCP = "192.168.88.32"; // main and backup control servers, please REMEMBER TO SET THESE TO WHATEVER YOU WANT, before compiling and flashing.
+char* serverB_ipLFCP = "192.168.88.33"; // for pure security reasons, I expect these to just be hardcoded once per each swarm.
+int addr_familyLFCP = 0;
+int ip_protocolLFCP = 0;
+#define LFCPPORT 8443
+
+int LFCPticker = 0;
+
+// udp layer 5 signaling, additional includes (LFCP) END
+
+
+
 /* FreeRTOS event group to signal when we are connected*/
 static EventGroupHandle_t wifi_event_group;
 
@@ -108,6 +132,77 @@ static void initialize_nvs(void)
     }
     ESP_ERROR_CHECK(err);
 }
+
+
+// LFCP FUNCTIONS START
+static void initialize_LFCP(void) // LFCP only
+{
+	//ESP_ERROR_CHECK(esp_netif_init()); // performed in another function, previously.
+	//ESP_ERROR_CHECK(esp_event_loop_create_default());  // not using this one.
+}
+
+
+static void LFCP_client_heartbeat(char* LFCPhostname, char* LFCPserverIP)
+{
+
+/* remember:
+static const char *TAGLFCP = "LFCP:";
+static const char *payloadLFCPinit = ",HEARTBEAT,0,0,0,0,0,0";  // to be completed with the current hostname...
+
+char rx_bufferLFCP[128];
+char serverA_ipLFCP[] = "192.168.88.32"; // main and backup control servers, please REMEMBER TO SET THESE TO WHATEVER YOU WANT, before compiling and flashing.
+char serverB_ipLFCP[] = "192.168.88.33"; // for pure security reasons, I expect these to just be hardcoded once per each swarm.
+int addr_familyLFCP = 0;
+int ip_protocolLFCP = 0;
+*/ //end 
+
+
+
+
+
+	struct sockaddr_in dest_addr;
+        dest_addr.sin_addr.s_addr = inet_addr(LFCPserverIP);
+        dest_addr.sin_family = AF_INET;
+        dest_addr.sin_port = htons(LFCPPORT);
+        addr_familyLFCP = AF_INET;
+        ip_protocolLFCP = IPPROTO_IP;
+        //inet_ntoa_r(dest_addr.sin_addr, addr_str, sizeof(addr_str) - 1); // unused, just a source of garbage at the moment
+
+	char *LFCPfullpayload;
+	LFCPfullpayload = malloc(strlen(LFCPhostname)+1+strlen(payloadLFCPinit));
+	strcpy(LFCPfullpayload, LFCPhostname);
+	strcpy(LFCPfullpayload, payloadLFCPinit);
+
+
+        int sock = socket(addr_familyLFCP, SOCK_DGRAM, ip_protocolLFCP);
+        if (sock < 0) {
+            ESP_LOGE(TAGLFCP, "Unable to create socket: errno %d", errno);
+            return;
+        }
+        ESP_LOGI(TAGLFCP, "Socket created, sending to %s:%d", LFCPserverIP, LFCPPORT);
+
+        
+
+	int err = sendto(sock, LFCPfullpayload, strlen(LFCPfullpayload), 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+	if (err < 0) {
+		ESP_LOGE(TAGLFCP, "Error occurred during sending: errno %d", errno);
+                return;
+	}
+	ESP_LOGI(TAG, "Message sent: %s", LFCPfullpayload);
+	
+            
+        
+
+        
+	ESP_LOGE(TAGLFCP, "Shutting down socket");
+	shutdown(sock, 0);
+	close(sock);
+        
+    
+
+}
+
+// LFCP FUNCTIONS END
 
 static void initialize_console(void)
 {
@@ -299,7 +394,7 @@ void wifi_init(const char* ssid, const char* passwd, const char* ap_ssid, const 
 
     wifi_event_group = xEventGroupCreate();
 
-    tcpip_adapter_init();
+    esp_netif_init();
     ESP_ERROR_CHECK(esp_event_loop_init(wifi_event_handler, NULL) );
 
     	// This mod allows us to assign an IP of our choice to the SoftAP interface.
@@ -515,8 +610,29 @@ void app_main(void)
 #endif //CONFIG_LOG_COLORS
     }
 
+
+    // init the LFCP protocol and variables
+    initialize_LFCP(); // unnecessary, just performs esp_netif_init(); already done previously.
+
+
     /* Main loop */
     while(true) {
+
+	// LFCP management START
+	if (LFCPticker >=16384) { // I don't really know how much time this will take.
+
+		LFCPticker = 0;
+		LFCP_client_heartbeat(ap_ssid, serverA_ipLFCP);
+		LFCP_client_heartbeat(ap_ssid, serverB_ipLFCP);
+	}
+
+	
+
+
+	LFCPticker++;
+	// LFCP management END
+
+
         /* Get a line using linenoise.
          * The line is returned when ENTER is pressed.
          */
