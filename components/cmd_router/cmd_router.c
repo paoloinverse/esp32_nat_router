@@ -28,8 +28,8 @@
 #define WITH_TASKS_INFO 1
 #endif
 
-const char** STAListInternal[] = {"sta00", "sta01", "sta02", "sta03", "sta04", "sta05", "sta06", "sta07", "sta08", "sta09", "sta10", "sta11", "sta12", "sta13", "sta14", "sta15"};
-const char** passListInternal[] = {"pass00", "pass01", "pass02", "pass03", "pass04", "pass05", "pass06", "pass07", "pass08", "pass09", "pass10", "pass11", "pass12", "pass13", "pass14", "pass15"};
+const char* STAListInternal[] = {"sta00", "sta01", "sta02", "sta03", "sta04", "sta05", "sta06", "sta07", "sta08", "sta09", "sta10", "sta11", "sta12", "sta13", "sta14", "sta15"};
+const char* passListInternal[] = {"pass00", "pass01", "pass02", "pass03", "pass04", "pass05", "pass06", "pass07", "pass08", "pass09", "pass10", "pass11", "pass12", "pass13", "pass14", "pass15"};
 
 
 
@@ -370,5 +370,43 @@ int set_staAlt(int argc, char **argv, int stanum)
     return err;
 }
 
+/* 'set_LFCP' command */
+int set_LFCP(int argc, char **argv, int LFCPPort)
+{
+    esp_err_t err;
+    nvs_handle_t nvs;
+	
+    if (argc <3) {
+		return 1;
+    }
+    //int nerrors = arg_parse(argc, argv, (void **) &set_sta_arg);
+    //if (nerrors != 0) {
+    //    arg_print_errors(stderr, set_sta_arg.end, argv[0]);
+    //    return 1;
+    //}
 
+    //preprocess_string((char*)set_sta_arg.ssid->sval[0]);
+    //preprocess_string((char*)set_sta_arg.password->sval[0]);
+
+    err = nvs_open(PARAM_NAMESPACE, NVS_READWRITE, &nvs);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = nvs_set_str(nvs, "LFCPserverA", argv[1]);
+    if (err == ESP_OK) {
+        err = nvs_set_str(nvs, "LFCPserverB", argv[2]);
+        if (err == ESP_OK) {
+		err = nvs_set_i32(nvs, "LFCPport", LFCPPort);
+		if (err == ESP_OK) {
+            		err = nvs_commit(nvs);
+            		if (err == ESP_OK) {
+                		ESP_LOGI(TAG, "LFCP settings %s, %s, %c stored.", argv[1], argv[2], LFCPPort);
+            		}
+		}
+        }
+    }
+    nvs_close(nvs);
+    return err;
+}
 

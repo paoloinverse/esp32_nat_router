@@ -63,6 +63,32 @@ setTimeout(\"location.href = '/'\",10000);\
 </small>\
 </form>\
 \
+\
+<h2>UDP Heartbeat servers (Optional, configure two redundant servers and the destination port)</h2>\
+<form action='' method='GET'>\
+<table>\
+<tr>\
+<tr>\
+<td>LFCP Server A (IP Address only, do not use FQDNs):</td>\
+<td><input type='text' name='LFCPserverA' value='192.168.88.32'/></td>\
+</tr>\
+<tr>\
+<td>LFCP Server B (IP Address only, do not use FQDNs):</td>\
+<td><input type='text' name='LFCPserverB' value='192.168.88.33'/></td>\
+</tr>\
+<tr>\
+<td>UDP Port number (default is 8443):</td>\
+<td><input type='number' name='LFCPport' value='8443'/></td>\
+</tr>\
+</table>\
+<small>\
+<i>If in doubt, do not touch these settings</i>(they just send out harmless udp packets)<br />\
+</small>\
+<tr>\
+<td></td>\
+<td><input type='submit' value='Set' /></td>\
+</tr>\
+</form>\
 <h2>Device Management</h2>\
 <form action='' method='GET'>\
 <table>\

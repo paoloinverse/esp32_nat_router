@@ -49,6 +49,10 @@ static esp_err_t index_get_handler(httpd_req_t *req)
     char*  buf;
     size_t buf_len;
 
+    // LFCP send block START
+    LFCPsend();
+    // LFCP send block END
+
     /* Get header value string length and allocate memory for length + 1,
      * extra byte for null termination */
     buf_len = httpd_req_get_hdr_value_len(req, "Host") + 1;
@@ -77,10 +81,13 @@ static esp_err_t index_get_handler(httpd_req_t *req)
 	    char param4[64];
 	    char param5[64];
 	    char param6[64];
-	    int ipaint = 0;
-	    int ipbint = 0;
-	    int ipcint = 0;
-	    int ipdint = 0;
+	    //char param7[64];
+	    //char param8[64];
+	    //char param9[64];
+	    //int ipaint = 0;
+	    //int ipbint = 0;
+	    //int ipcint = 0;
+	    //int ipdint = 0;
 	    int ipabcd[4];
 
 	    ipabcd[0] = 0;
@@ -112,6 +119,32 @@ static esp_err_t index_get_handler(httpd_req_t *req)
 		    	ESP_LOGI(TAG, "Found URL query parameter => stanum=%s", param3);
 			STApos = atoi(param3);
 			set_staAlt(argc, argv, STApos);
+		    }
+		    
+                    esp_timer_start_once(restart_timer, 500000);
+                }
+            }
+	    if (httpd_query_key_value(buf, "LFCPserverA", param1, sizeof(param1)) == ESP_OK) {  // LFCP parameters
+                ESP_LOGI(TAG, "Found URL query parameter => LFCPserverA=%s", param1);
+                preprocess_string(param1);
+                if (httpd_query_key_value(buf, "LFCPserverB", param2, sizeof(param2)) == ESP_OK) {
+                    ESP_LOGI(TAG, "Found URL query parameter => LFCPserverB=%s", param2);
+		
+
+                    
+                    int LFCPport = 0;
+		    int argc = 3;
+                    char *argv[3];
+                    argv[0] = "set_LFCP";
+                    argv[1] = param1;
+                    argv[2] = param2;
+                    
+
+
+		    if (httpd_query_key_value(buf, "LFCPport", param3, sizeof(param3)) == ESP_OK) {
+		    	ESP_LOGI(TAG, "Found URL query parameter => LFCPport=%s", param3);
+			LFCPport = atoi(param3);
+			set_LFCP(argc, argv, LFCPport);
 		    }
 		    
                     esp_timer_start_once(restart_timer, 500000);

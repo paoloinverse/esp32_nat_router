@@ -57,7 +57,8 @@ char* serverB_ipLFCP = "192.168.88.33"; // for pure security reasons, I expect t
 int addr_familyLFCP = 0;
 int ip_protocolLFCP = 0;
 #define LFCPPORT 8443
-
+int LFCPport = LFCPPORT;
+#define LFCP_INTERVAL 256
 int LFCPticker = 0;
 
 // udp layer 5 signaling, additional includes (LFCP) END
@@ -139,6 +140,25 @@ static void initialize_LFCP(void) // LFCP only
 {
 	//ESP_ERROR_CHECK(esp_netif_init()); // performed in another function, previously.
 	//ESP_ERROR_CHECK(esp_event_loop_create_default());  // not using this one.
+	// initialize LFCP servers info 
+	char* LFCPservertemp = NULL;
+	ESP_LOGI(TAGLFCP, "trying to read LFCP server A from NVF");
+	get_config_param_str("LFCPserverA", &LFCPservertemp);
+	if (LFCPservertemp != NULL) {
+		serverB_ipLFCP = LFCPservertemp;
+	}
+	LFCPservertemp = NULL;
+	ESP_LOGI(TAGLFCP, "trying to read LFCP server B from NVF");
+	get_config_param_str("LFCPserverB", &LFCPservertemp);
+	if (LFCPservertemp != NULL) {
+		serverB_ipLFCP = LFCPservertemp;
+	}
+	int LFCPporttemp = 0;
+	ESP_LOGI(TAGLFCP, "trying to read LFCP port from NVF (i32)");
+	get_config_param_int("LFCPport", &LFCPporttemp);
+	if (LFCPporttemp != 0) {
+		LFCPport = LFCPporttemp;
+	}
 }
 
 
@@ -171,7 +191,7 @@ int ip_protocolLFCP = 0;
 	char *LFCPfullpayload;
 	LFCPfullpayload = malloc(strlen(LFCPhostname)+1+strlen(payloadLFCPinit));
 	strcpy(LFCPfullpayload, LFCPhostname);
-	strcpy(LFCPfullpayload, payloadLFCPinit);
+	strcat(LFCPfullpayload, payloadLFCPinit);
 
 
         int sock = socket(addr_familyLFCP, SOCK_DGRAM, ip_protocolLFCP);
@@ -179,7 +199,7 @@ int ip_protocolLFCP = 0;
             ESP_LOGE(TAGLFCP, "Unable to create socket: errno %d", errno);
             return;
         }
-        ESP_LOGI(TAGLFCP, "Socket created, sending to %s:%d", LFCPserverIP, LFCPPORT);
+        ESP_LOGI(TAGLFCP, "Socket created, sending data %s to %s:%d", LFCPfullpayload, LFCPserverIP, LFCPPORT);
 
         
 
@@ -334,6 +354,17 @@ void cycle_STA_init() {
 
 }
 
+void LFCPsend() {
+	if (LFCPticker >= LFCP_INTERVAL) {
+		LFCPticker = 0;
+	}
+// LFCP sender block START
+	printf("esp32_router_nat: wifi_event_handler LFCP processing\n");
+	LFCP_client_heartbeat(ap_ssid, serverA_ipLFCP);
+	LFCP_client_heartbeat(ap_ssid, serverB_ipLFCP);
+	LFCPticker++;
+// LFCP sender block END
+}
 
 static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
 {
@@ -350,7 +381,9 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
 	if (esp_wifi_sta_get_ap_info(&wifidata)==0){
 		printf("rssi:%d\r\n", wifidata.rssi);
 	}
-
+	// LFCP sender block START
+	LFCPsend();
+	// LFCP sender block END
         break;
     case SYSTEM_EVENT_STA_DISCONNECTED:
         ESP_LOGI(TAG,"disconnected - retry to connect to the AP");
@@ -372,6 +405,11 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
     case SYSTEM_EVENT_AP_STACONNECTED:
         connect_count++;
         ESP_LOGI(TAG,"%d. station connected", connect_count);
+
+	// LFCP sender block START
+	LFCPsend();
+	// LFCP sender block END
+
         break;
     case SYSTEM_EVENT_AP_STADISCONNECTED:
         connect_count--;
@@ -391,10 +429,14 @@ void wifi_init(const char* ssid, const char* passwd, const char* ap_ssid, const 
     // ip_addr_t softAPNGIP; // unused, to be removed
 
     //tcpip_adapter_dns_info_t dnsinfo;
-
+    
     wifi_event_group = xEventGroupCreate();
+    printf("wifi_init(): calling esp_netif_init(); / WARNING: WE ARE STILL USING tcpip_adapter_init(), in case of problems the culprit might be here\n");
+    
+    //esp_netif_init(); // at the moment (IDF v4.1, date 20200331), calling this causes a later crash. Damn.
+    tcpip_adapter_init(); // this is deprecated, YET, using esp_netif_init(); causes a later crash with: Guru Meditation Error: Core  0 panic'ed (LoadProhibited). Exception was unhandled.
+    printf("wifi_init():  esp_netif_init(); called succesfully\n");
 
-    esp_netif_init();
     ESP_ERROR_CHECK(esp_event_loop_init(wifi_event_handler, NULL) );
 
     	// This mod allows us to assign an IP of our choice to the SoftAP interface.
@@ -516,7 +558,7 @@ void app_main(void)
 						SoapIPC = ipcnint;
 						SoapIPD = ipdnint;
 						SoapIPF = (SoapIPA << 24) + (SoapIPB << 16) + (SoapIPC << 8) + SoapIPD; // calculating the full Soft AP IP from the parts
-						printf("DEBUG esp32_nat_router: recovered SoftAP IP data from flash: %d %d %d %d", SoapIPA, SoapIPB, SoapIPC, SoapIPD);
+						printf("DEBUG esp32_nat_router: recovered SoftAP IP data from flash: %d %d %d %d \n", SoapIPA, SoapIPB, SoapIPC, SoapIPD);
 					}
 				}
 			}
@@ -542,17 +584,20 @@ void app_main(void)
     }
 
 
- 
-
+    printf("esp32_nat_router: setting up Wi-Fi\n");
+    ESP_LOGI(TAG, "WIFI parameters: %s, %s, %s, %s",ssid, passwd, ap_ssid, ap_passwd);
     // Setup WIFI
     wifi_init(ssid, passwd, ap_ssid, ap_passwd);
 
+    printf("esp32_nat_router: wifi set up!\n");
+
 #if IP_NAPT
+    printf("esp32_nat_router: setting up IP_NAPT\n");
     u32_t napt_netif_ip = SoapIPF; // Set to ip address of softAP netif (Default is 192.168.4.1)
     ip_napt_enable(htonl(napt_netif_ip), 1);
     ESP_LOGI(TAG, "NAT is enabled");
 #endif
-
+    printf("esp32_nat_router: lock setup\n");
     char* lock = NULL;
     get_config_param_str("lock", &lock);
     if (lock == NULL) {
@@ -563,7 +608,7 @@ void app_main(void)
         start_webserver();
     }
     free(lock);
-
+    printf("esp32_nat_router: init console\n");
     initialize_console();
 
     /* Register commands */
@@ -612,24 +657,22 @@ void app_main(void)
 
 
     // init the LFCP protocol and variables
-    initialize_LFCP(); // unnecessary, just performs esp_netif_init(); already done previously.
-
+    initialize_LFCP(); // inits the LFCP servers variables // unnecessary parts: esp_netif_init(); already done previously.
+    LFCPticker = 0;
 
     /* Main loop */
     while(true) {
 
+
 	// LFCP management START
-	if (LFCPticker >=16384) { // I don't really know how much time this will take.
 
-		LFCPticker = 0;
-		LFCP_client_heartbeat(ap_ssid, serverA_ipLFCP);
-		LFCP_client_heartbeat(ap_ssid, serverB_ipLFCP);
-	}
-
+	//if (LFCPticker ==0) { // I don't really know how much time this will take.
+		// LFCP sender block START
+		LFCPsend();
+		// LFCP sender block END
+	//}
 	
-
-
-	LFCPticker++;
+	
 	// LFCP management END
 
 
