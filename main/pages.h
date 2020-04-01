@@ -64,7 +64,7 @@ setTimeout(\"location.href = '/'\",10000);\
 </form>\
 \
 \
-<h2>UDP Heartbeat servers (Optional, configure two redundant servers and the destination port)</h2>\
+<h2>UDP Heartbeat / Messaging servers (Optional, configure two redundant servers and the destination port)</h2>\
 <form action='' method='GET'>\
 <table>\
 <tr>\

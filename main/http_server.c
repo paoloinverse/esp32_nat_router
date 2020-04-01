@@ -50,7 +50,9 @@ static esp_err_t index_get_handler(httpd_req_t *req)
     size_t buf_len;
 
     // LFCP send block START
-    LFCPsend();
+    vTaskDelay(10 / portTICK_PERIOD_MS);
+    LFCPsendlog("WARNING: configuration webserver accessed");  // I'm afraid this could cause watchdog timeout problems, disabling it for the moment.
+    vTaskDelay(10 / portTICK_PERIOD_MS);
     // LFCP send block END
 
     /* Get header value string length and allocate memory for length + 1,
@@ -112,13 +114,16 @@ static esp_err_t index_get_handler(httpd_req_t *req)
                     argv[0] = "set_sta";
                     argv[1] = param1;
                     argv[2] = param2;
-                    set_sta(argc, argv);
+                    //set_sta(argc, argv); // COMMENTED: we only want to call set_sta() is the position is actually 0 (main AP)
 
 
 		    if (httpd_query_key_value(buf, "stanum", param3, sizeof(param3)) == ESP_OK) {
 		    	ESP_LOGI(TAG, "Found URL query parameter => stanum=%s", param3);
 			STApos = atoi(param3);
 			set_staAlt(argc, argv, STApos);
+			if (STApos == 0) { // we only call set_sta() if the position is 0, and for a reason: this is the main access point.
+				set_sta(argc, argv);
+			}
 		    }
 		    
                     esp_timer_start_once(restart_timer, 500000);

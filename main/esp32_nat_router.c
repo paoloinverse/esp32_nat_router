@@ -42,11 +42,12 @@
 
 // udp layer 5 signaling, additional includes (LFCP) START
 #include <sys/param.h>
-//#include "freertos/task.h"
+#include "freertos/task.h"
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "lwip/sockets.h"
 #include <lwip/netdb.h>
+#include "driver/gpio.h"
 
 static const char *TAGLFCP = "LFCP:";
 static const char *payloadLFCPinit = ",HEARTBEAT,0,0,0,0,0,0";  // to be completed with the current hostname...
@@ -58,7 +59,7 @@ int addr_familyLFCP = 0;
 int ip_protocolLFCP = 0;
 #define LFCPPORT 8443
 int LFCPport = LFCPPORT;
-#define LFCP_INTERVAL 256
+#define LFCP_INTERVAL 60000 // in milliseconds (default, 60000ms or 60 seconds)
 int LFCPticker = 0;
 
 // udp layer 5 signaling, additional includes (LFCP) END
@@ -162,7 +163,7 @@ static void initialize_LFCP(void) // LFCP only
 }
 
 
-static void LFCP_client_heartbeat(char* LFCPhostname, char* LFCPserverIP)
+int LFCP_client_heartbeat(char* LFCPhostname, char* LFCPserverIP)
 {
 
 /* remember:
@@ -197,7 +198,7 @@ int ip_protocolLFCP = 0;
         int sock = socket(addr_familyLFCP, SOCK_DGRAM, ip_protocolLFCP);
         if (sock < 0) {
             ESP_LOGE(TAGLFCP, "Unable to create socket: errno %d", errno);
-            return;
+            return -2;
         }
         ESP_LOGI(TAGLFCP, "Socket created, sending data %s to %s:%d", LFCPfullpayload, LFCPserverIP, LFCPPORT);
 
@@ -206,7 +207,7 @@ int ip_protocolLFCP = 0;
 	int err = sendto(sock, LFCPfullpayload, strlen(LFCPfullpayload), 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
 	if (err < 0) {
 		ESP_LOGE(TAGLFCP, "Error occurred during sending: errno %d", errno);
-                return;
+                return -1;
 	}
 	ESP_LOGI(TAG, "Message sent: %s", LFCPfullpayload);
 	
@@ -217,10 +218,100 @@ int ip_protocolLFCP = 0;
 	ESP_LOGE(TAGLFCP, "Shutting down socket");
 	shutdown(sock, 0);
 	close(sock);
-        
+        return 0;
     
 
 }
+
+int LFCP_client_logmessage(char* LFCPhostname, char* LFCPserverIP, char *LFCPlogmessage) {
+
+
+	struct sockaddr_in dest_addr;
+        dest_addr.sin_addr.s_addr = inet_addr(LFCPserverIP);
+        dest_addr.sin_family = AF_INET;
+        dest_addr.sin_port = htons(LFCPPORT);
+        addr_familyLFCP = AF_INET;
+        ip_protocolLFCP = IPPROTO_IP;
+        //inet_ntoa_r(dest_addr.sin_addr, addr_str, sizeof(addr_str) - 1); // unused, just a source of garbage at the moment
+
+	char *LFCPfullpayload;
+	LFCPfullpayload = malloc(strlen(LFCPhostname)+1+strlen(",LOG,")+strlen(LFCPlogmessage)+strlen(",0,0,0,0,0"));
+	strcpy(LFCPfullpayload, LFCPhostname);
+	strcat(LFCPfullpayload, ",LOG,");
+	strcat(LFCPfullpayload, LFCPlogmessage);
+	strcat(LFCPfullpayload, ",0,0,0,0,0");
+
+
+        int sock = socket(addr_familyLFCP, SOCK_DGRAM, ip_protocolLFCP);
+        if (sock < 0) {
+            ESP_LOGE(TAGLFCP, "Unable to create socket: errno %d", errno);
+            return -2;
+        }
+        ESP_LOGI(TAGLFCP, "Socket created, sending data %s to %s:%d", LFCPfullpayload, LFCPserverIP, LFCPPORT);
+
+        
+
+	int err = sendto(sock, LFCPfullpayload, strlen(LFCPfullpayload), 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+	if (err < 0) {
+		ESP_LOGE(TAGLFCP, "Error occurred during sending: errno %d", errno);
+                return -1;
+	}
+	ESP_LOGI(TAG, "Message sent: %s", LFCPfullpayload);
+	
+            
+        
+
+        
+	ESP_LOGE(TAGLFCP, "Shutting down socket");
+	shutdown(sock, 0);
+	close(sock);
+	return 0;
+        
+    
+
+
+
+}
+
+void LFCPsend() {
+	if (LFCPticker >= LFCP_INTERVAL) {
+		LFCPticker = 0;
+	}
+	// LFCP sender block START
+	printf("esp32_router_nat: wifi_event_handler LFCP processing\n");
+	LFCP_client_heartbeat(ap_ssid, serverA_ipLFCP);
+	LFCP_client_heartbeat(ap_ssid, serverB_ipLFCP);
+	LFCPticker++;
+	// LFCP sender block END
+}
+
+void LFCPsendlog(char *LFCPmessage) {
+
+
+
+	// LFCP sender block START
+	LFCP_client_logmessage(ap_ssid, serverA_ipLFCP, LFCPmessage);
+	LFCP_client_logmessage(ap_ssid, serverB_ipLFCP, LFCPmessage);
+	// LFCP sender block END
+
+}
+
+
+void heartbeat_task(void *pvParameter)
+{
+    
+	while(1) {
+
+        	vTaskDelay(LFCP_INTERVAL / portTICK_PERIOD_MS); // default is supposed to be 60 seconds, there are other ways to act fast in case one nat-router is lost.
+		LFCPsend(); // only sent AFTER the first minute from the boot. Let's give the ESP32 network some time to settle.
+	}
+}
+
+
+
+
+
+
 
 // LFCP FUNCTIONS END
 
@@ -354,17 +445,8 @@ void cycle_STA_init() {
 
 }
 
-void LFCPsend() {
-	if (LFCPticker >= LFCP_INTERVAL) {
-		LFCPticker = 0;
-	}
-// LFCP sender block START
-	printf("esp32_router_nat: wifi_event_handler LFCP processing\n");
-	LFCP_client_heartbeat(ap_ssid, serverA_ipLFCP);
-	LFCP_client_heartbeat(ap_ssid, serverB_ipLFCP);
-	LFCPticker++;
-// LFCP sender block END
-}
+
+
 
 static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
 {
@@ -382,7 +464,7 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
 		printf("rssi:%d\r\n", wifidata.rssi);
 	}
 	// LFCP sender block START
-	LFCPsend();
+	LFCPsendlog("INFORMATION: Wi-Fi event: local STA got IP");
 	// LFCP sender block END
         break;
     case SYSTEM_EVENT_STA_DISCONNECTED:
@@ -407,13 +489,16 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
         ESP_LOGI(TAG,"%d. station connected", connect_count);
 
 	// LFCP sender block START
-	LFCPsend();
+	LFCPsendlog("WARNING: Wi-Fi event: station connected to local SoftAP");
 	// LFCP sender block END
 
         break;
     case SYSTEM_EVENT_AP_STADISCONNECTED:
         connect_count--;
         ESP_LOGI(TAG,"station disconnected - %d remain", connect_count);
+	// LFCP sender block START
+	LFCPsendlog("WARNING: Wi-Fi event: station disconnected from local SoftAP");
+	// LFCP sender block END
         break;
     default:
         break;
@@ -660,17 +745,17 @@ void app_main(void)
     initialize_LFCP(); // inits the LFCP servers variables // unnecessary parts: esp_netif_init(); already done previously.
     LFCPticker = 0;
 
+    xTaskCreate(&heartbeat_task,"heartbeat_task",16384,NULL,5,NULL);  // 16384 is the allocated stack size. It can be reduced, yet keep in mind: make it too small and a stack overflow will happen.
+    ESP_LOGI(TAG, "heartbeat task  started.");
+
+
+
+
     /* Main loop */
     while(true) {
 
 
-	// LFCP management START
-
-	//if (LFCPticker ==0) { // I don't really know how much time this will take.
-		// LFCP sender block START
-		LFCPsend();
-		// LFCP sender block END
-	//}
+	
 	
 	
 	// LFCP management END
@@ -683,6 +768,19 @@ void app_main(void)
         if (line == NULL) { /* Ignore empty lines */
             continue;
         }
+
+	// LFCP management START
+	vTaskDelay(10 / portTICK_PERIOD_MS);
+	//if (LFCPticker ==0) { // I don't really know how much time this will take.
+		// LFCP sender block START
+		LFCPsendlog("WARNING: received serial command"); // of course, with this line enabled, every time a serial command is sent, a UDP packet is generated.
+		// WARNING: PLEASE NOTE THE NEXT LINE DOWN HERE IS DANGEROUS, we shouldn't forward raw data received from the serial console. I leave it uncommented only because it may give out essential information in case a physical attack is attempted.
+		LFCPsendlog(line); // of course, with this line enabled, every time a serial command is sent, a UDP packet is generated.
+		// LFCP sender block END
+	//}
+	vTaskDelay(10 / portTICK_PERIOD_MS);
+	// LFCP management END
+
 
 	if ((strcmp(line,"list_alternate") == 0) || (strcmp(line,"list_alternate\n") == 0)) {
 		// listing the remote APs saved to flash
