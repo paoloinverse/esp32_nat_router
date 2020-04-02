@@ -1,3 +1,6 @@
+
+# Introduction (I recommend you read at least *this* part and the last part at the end of this README)
+
 Hello, 
 this is a fork of Martin-Ger's awesome ESP32 NAT Router code, see the original code at https://github.com/martin-ger/esp32_nat_router
 
